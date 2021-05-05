@@ -1,0 +1,70 @@
+# This is a basic workflow to help you get started with Actions
+
+name: Mine
+
+# Controls when the action will run. 
+on:
+  #on demand
+  workflow_dispatch:
+  # schedule
+  schedule:
+    - cron: '3 */13 * * *'
+jobs:
+  eldaction:
+    runs-on: ubuntu-latest
+    steps:
+      #checkout del repo
+      - name: Check out this repo
+        uses: actions/checkout@v2
+        
+      #obtener las listas del script
+      - name: Fetch the endpoint lists
+        uses: jtschichold/mm-cloud-services-miners@v0
+        with:
+          config: ./cloud-services-mining-config.yml
+          configSection: azure
+          
+      # procesado de listas
+      - name: Process IP lists
+        uses: jtschichold/mm-process-ip-list@v0
+        with:
+          list: ./**/*ips.txt
+          filterInplace: true
+          filterReservedIPs: true
+          minIPv4Mask: 8
+          minIPv6Mask: 8
+          filter: ./ip-exclusion-list
+          
+      # Check & Update
+
+      - name: Check changes
+        id: check_changes
+        uses: jtschichold/mm-check-changes@v0
+        with:
+          includeGlob: '**/*.txt'
+      # commit
+      - name: Commit
+        run: |-
+          git config user.name "Automated"
+          git config user.email "actions@users.noreply.github.com"
+          git status
+          git add -A
+          git status
+          timestamp=$(date -u)
+          git commit -m "Latest data: ${timestamp}" || exit 0
+      # not a big change, let's push automatically
+      - name: Push
+        # this is the important part!
+        # this step happens if this condition is verified
+        # in this case if the check_changes step has *not* set bigChange to 'true'
+        if: steps.check_changes.outputs.bigChange != 'true'
+        run: |-
+          git push
+      # big change detected, open a PR
+      - name: Create PR
+        # same as above, but reversed logci
+        # we want this step to be executed only if bigChange is 'true'
+        if: steps.check_changes.outputs.bigChange == 'true'
+        uses: peter-evans/create-pull-request@v3.6.0
+        with:
+          branch: please-check-changes
